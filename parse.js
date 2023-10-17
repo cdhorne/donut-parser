@@ -3,7 +3,7 @@ const orders = require("./orders.json");
 /** This will fetch the orders directly from the API */
 /*
     const orderURL = "https://pos.globalfoodsoft.com/pos/order/pop"
-    const authToken = "";
+    const authToken = "aYg58tQOqTROygp3J";
     const authFetch = async (url) => {
         const response = await fetch(url, {
             method: "POST",
@@ -36,11 +36,6 @@ const flavourKeys = [
     //'DF OG',
     //'DF Pumpkin Spice',
 ];
-
-const combinedHeaders = [
-    ...metadataKeys,
-    ...flavourKeys,
-]
 
 const boxJson = orders.orders.flatMap((order) => {
     const fulfillmentDate = new Date(order.fulfill_at);
@@ -76,9 +71,10 @@ const boxJson = orders.orders.flatMap((order) => {
 const jsonToCsv = (jsonArray) => {
     const replacer = (key, value) => value === null ? '' : value;
     const keys = [...metadataKeys,  ...flavourKeys];
-    return jsonArray
-        .map(row => combinedHeaders.map(key => JSON.stringify(row[key], replacer)).join(','))
-        .join('\r\n')
+    return [
+        keys.join(','),
+        ...jsonArray.map(row => keys.map(key => JSON.stringify(row[key], replacer)).join(','))
+    ].join('\r\n')
 }
 
 console.log(jsonToCsv(boxJson));
