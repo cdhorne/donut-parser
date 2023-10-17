@@ -3,7 +3,7 @@ const orders = require("./orders.json");
 /** This will fetch the orders directly from the API */
 /*
     const orderURL = "https://pos.globalfoodsoft.com/pos/order/pop"
-    const authToken = "aYg58tQOqTROygp3J";
+    const authToken = "";
     const authFetch = async (url) => {
         const response = await fetch(url, {
             method: "POST",
