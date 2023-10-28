@@ -1,19 +1,5 @@
 const orders = require("./orders.json");
 
-/** This will fetch the orders directly from the API */
-/*
-    const orderURL = "https://pos.globalfoodsoft.com/pos/order/pop"
-    const authToken = "";
-    const authFetch = async (url) => {
-        const response = await fetch(url, {
-            method: "POST",
-            headers: { Authorization: authToken }
-        });
-        return response.json();
-    };
-    const orders = await authFetch(orderURL);
-*/
-
 const metadataKeys = [
     'status',
     'date',
@@ -22,54 +8,128 @@ const metadataKeys = [
     'phone',
     'email',
     'multi',
+    'price',
+    'instructions',
+    'paid',
+    'from'
 ]
+
+const ITEMS = {
+    MUSUBI: "Musubi",
+    ONIGIRI: "Onigiri",
+    ASSORTED_HALF_DOZEN : "Assorted - Half Dozen Box",
+    ASSORTED_DOZEN : "Assorted - Dozen Box",
+    MOCHI_BITES: "Cookies & Cream Mochi Bites"
+}
 
 const flavourKeys = [
     'Original Glaze',
-    'Ube Coconut',
-    'Brown Sugar Mulk Tea',
-    'Dole Whip',
-    'Chocolate Sprinkle',
+    'Swirly Ube',
+    //'Ube Coconut',
+    //'Brown Sugar Mulk Tea',
+    //'Dole Whip',
+    //'Chocolate Sprinkle',
+
+    'BOO-Ston Cream',
     'Pumpkin Spice',
-    //'Mochi Bites',
-    //'Onigiri',
+    'Candied Apple',
+    'Pandan Coconut Alien',
+
+    ITEMS.MOCHI_BITES,
+    ITEMS.MUSUBI,
+    ITEMS.ONIGIRI,
+
+    'Dairy Free - Original Glaze',
+    'Dairy Free - Candied Apple'
     //'DF OG',
     //'DF Pumpkin Spice',
 ];
 
+// The first 6 items in flavourKeys become the assorted donuts
+const assortedFlavours = flavourKeys.slice(0, 6);
+
+// The savory items are grouped together in one box
+const SAVORY_ITEMS = [
+    ITEMS.MUSUBI,
+    ITEMS.ONIGIRI
+]
+
+const getFlavoursForBox = (item) => {
+    if (item.options.length) {
+        return item.options
+            .map((option) => option.name)
+            .reduce((total, curr) => {
+                total[curr] ? total[curr] += 1 : total[curr] = 1;
+                return total;
+            }, {});
+    } else if (item.name === ITEMS.ASSORTED_HALF_DOZEN) {
+        return assortedFlavours.reduce((total, current) => ({ ...total, [current]: 1 }), {})
+    } else if (item.name === ITEMS.ASSORTED_DOZEN) {
+        return assortedFlavours.reduce((total, current) => ({ ...total, [current]: 2 }), {})
+    } else {
+        return { [item.name]: 1 }
+    }
+}
+
 const boxJson = orders.orders.flatMap((order) => {
     const fulfillmentDate = new Date(order.fulfill_at);
+
     const customerMetadata = {
         date: fulfillmentDate.toLocaleDateString(),
-        time: fulfillmentDate.toLocaleTimeString(),
+        time: fulfillmentDate.toLocaleTimeString('en-US', { hour: 'numeric', minute: 'numeric', hour12: true }),
         status: order.status,
         person: `${order.client_first_name} ${order.client_last_name}`,
         phone: order.client_phone,
         email: order.client_email,
     }
 
-    return order.items.flatMap((item) => {
-        const boxes = [];
-        let boxNumber = 1;
-        while (boxNumber <= item.quantity) {
-            boxes.push({
+    const sheetMetadata = {
+        paid: "No",
+        from: "GloriaFoods",
+    }
+
+    const savoryItems = order.items.filter(({ name }) => !SAVORY_ITEMS.includes(name));
+    const wholeBoxItems = order.items.filter(({ name }) => !SAVORY_ITEMS.includes(name));
+
+    const orderBoxes = [];
+
+    // Package Musubi/Onigiri Together
+    if (savoryItems.length) {
+        const savoryBox = Object.fromEntries(SAVORY_ITEMS
+            .map((savoryItemName) => [
+                savoryItemName,
+                order.items
+                    .filter(({ name }) => name === savoryItemName)
+                    .map(({ quantity }) => quantity)
+                    .reduce((total, current) => total + current, 0)
+            ]));
+        orderBoxes.push(savoryBox);
+    }
+
+    wholeBoxItems.forEach((item) => {
+        for (let boxNumber = 1; boxNumber <= item.quantity; boxNumber++) {
+            orderBoxes.push({
                 ...customerMetadata,
-                ...item.options
-                    .map((option) => option.name)
-                    .reduce((total, curr) => {
-                        total[curr] ? total[curr] += 1 : total[curr] = 1;
-                        return total;
-                    }, {}),
-                multi: item.quantity > 1 ? `${boxNumber}/${item.quantity}` : '',
+                price: item.price,
+                instructions: item.instructions,
+                ...getFlavoursForBox(item),
             });
-            boxNumber++;
         }
-        return boxes;
     });
+
+    // Add the count to each box
+    const boxesWithMetadata = orderBoxes.map((box, index) => ({
+        ...customerMetadata,
+        multi: orderBoxes.length > 1 ? `${index + 1} / ${orderBoxes.length}` : "",
+        ...sheetMetadata,
+        ...box,
+    }));
+
+    return boxesWithMetadata;
 })
 
 const jsonToCsv = (jsonArray) => {
-    const replacer = (key, value) => value === null ? '' : value;
+    const replacer = (key, value) => !value ? '' : value;
     const keys = [...metadataKeys,  ...flavourKeys];
     return [
         keys.join(','),
